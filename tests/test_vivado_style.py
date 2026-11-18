@@ -320,6 +320,42 @@ class TestMaintainerRole(unittest.TestCase):
         self.assertEqual(self.w(".claude/mae-policy.json", agent="rtl-designer"), 2)
         self.assertEqual(self.call("Bash", {"command": "cat .mae/runner.key"}, agent="ic-orchestrator"), 2)
 
+    def test_only_maintainer_may_push(self):
+        self.assertEqual(json.loads((ROOT / ".claude/settings.json").read_text())["permissions"].get("deny"), None)
+        for role in ("ic-orchestrator", "rtl-designer", "dv-engineer", "formal-engineer", "impl-engineer",
+                     "spec-analyst", "debug-triage", "design-reviewer", "code-searcher", "unknown-role"):
+            self.assertEqual(self.call("Bash", {"command": "git push origin main"}, agent=role), 2, role)
+            self.assertEqual(self.call("Bash", {"command": "python3 tools/mae.py approve signoff"}, agent=role), 2, role)
+            self.assertEqual(self.call("Read", {"file_path": str(ROOT / ".mae/runner.key")}, agent=role), 2, role)
+            self.assertEqual(self.w(".claude/settings.json", agent=role), 2, role)
+
+    def test_search_cannot_reach_mae(self):
+        for role in ("impl-engineer", "design-reviewer", "ic-orchestrator"):
+            for tool, inp in (("Grep", {"pattern": "x"}), ("Grep", {"pattern": "x", "path": "."}),
+                              ("Grep", {"pattern": "x", "path": ".mae"}), ("Glob", {"pattern": "**/*"}),
+                              ("Glob", {"pattern": ".mae/*"}), ("Glob", {"pattern": "rtl/../.mae/*"}),
+                              ("Glob", {"pattern": "*", "path": str(ROOT)})):
+                self.assertEqual(self.call(tool, inp, agent=role), 2, (role, tool, inp))
+        self.assertEqual(self.call("Grep", {"pattern": "x", "path": "impl"}, agent="impl-engineer"), 0)
+        self.assertEqual(self.call("Glob", {"pattern": "rtl/*.v"}, agent="ic-orchestrator"), 0)
+        self.assertEqual(self.call("Grep", {"pattern": "x"}, agent="project-maintainer"), 0)
+
+    def spawn(self, payload):
+        env = {k: v for k, v in os.environ.items() if k != "MAE_ROLE"}
+        env["CLAUDE_PROJECT_DIR"] = str(ROOT)
+        return subprocess.run([sys.executable, str(ROOT / ".claude/hooks/guard_spawn.py")], input=payload,
+                              capture_output=True, text=True, env=env).returncode
+
+    def test_maintainer_may_spawn_and_hooks_fail_closed(self):
+        inp = {"tool_name": "Agent", "tool_input": {"subagent_type": "code-searcher", "prompt": "find x"}}
+        self.assertEqual(self.spawn(json.dumps({**inp, "agent_type": "project-maintainer"})), 0)
+        self.assertEqual(self.spawn(json.dumps({**inp, "agent_type": "rtl-designer"})), 2)
+        self.assertEqual(self.spawn("not json"), 2)
+        env = {**os.environ, "CLAUDE_PROJECT_DIR": str(ROOT)}
+        rc = subprocess.run([sys.executable, str(ROOT / ".claude/hooks/guard_tools.py")], input="not json",
+                            capture_output=True, text=True, env=env).returncode
+        self.assertEqual(rc, 2)
+
     def test_env_fallback_and_default_unchanged(self):
         self.assertEqual(self.w("spec/requirements.json", env_role="project-maintainer"), 0)
         self.assertEqual(self.w("spec/requirements.json"), 2)                       # default = orchestrator

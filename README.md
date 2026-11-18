@@ -367,8 +367,10 @@ MAE_ROLE=project-maintainer claude --agent project-maintainer          # bash / 
 $env:MAE_ROLE="project-maintainer"; claude --agent project-maintainer  # PowerShell
 ```
 
-It has full access (`"full_access": true` in `.claude/mae-policy.json`); Claude Code's permission
-prompts still ask before risky calls. After it edits `spec/requirements.json`, re-run
+It is the only role with full access (`"full_access": true` in `.claude/mae-policy.json`): every
+tool, any command including `git push`, any app, any URL and any file on the machine. Every other
+role stays limited by the hooks, which block the call if they fail. Claude Code's permission prompts
+still ask before risky calls. After it edits `spec/requirements.json`, re-run
 `approve spec_baseline` yourself.
 
 Read-only search (Haiku, no write tools): `MAE_ROLE=code-searcher claude --agent code-searcher`.

@@ -44,8 +44,9 @@ run by a person in their own terminal. Agents are blocked from running it.
 ## Sessions
 - `claude` → `ic-orchestrator`: runs the flow; writes nothing itself.
 - `MAE_ROLE=project-maintainer claude --agent project-maintainer` → human-supervised session with
-  full access (`full_access` in `mae-policy.json`): any command, any file, inside or outside the
-  project. All other roles keep their scopes and barriers.
+  full access (`full_access` in `mae-policy.json`): every tool, any command including `git push`,
+  any app, any URL, any file, inside or outside the project. It is the only such role; all others
+  keep their scopes and barriers, enforced by the hooks in `.claude/hooks/`.
 - `code-searcher` (Haiku, Read/Grep/Glob only) → read-only file/symbol/text search with `path:line`
   results; not part of the flow. Run it alone (`MAE_ROLE=code-searcher claude --agent code-searcher`)
   or as a subagent of the maintainer session.

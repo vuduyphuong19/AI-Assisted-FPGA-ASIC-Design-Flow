@@ -17,19 +17,6 @@
       "Bash(python3 tools/mae.py revert *)",
       "Bash(python3 tools/mae.py report)",
       "Bash(python3 tools/mae.py audit)"
-    ],
-    "deny": [
-      "Bash(python3 tools/mae.py approve *)",
-      "Bash(git push *)",
-      "Read(./.mae/**)",
-      "Edit(./.mae/**)",
-      "Write(./.mae/**)",
-      "Edit(./.claude/hooks/**)",
-      "Write(./.claude/hooks/**)",
-      "Edit(./.claude/settings.json)",
-      "Write(./.claude/settings.json)",
-      "Edit(./.claude/mae-policy.json)",
-      "Write(./.claude/mae-policy.json)"
     ]
   },
   "hooks": {

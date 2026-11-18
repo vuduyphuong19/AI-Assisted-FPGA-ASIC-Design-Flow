@@ -116,7 +116,7 @@
       "read_deny": []
     },
     "project-maintainer": {
-      "_comment": "Human-supervised maintenance session (claude --agent project-maintainer). full_access: the guard hook allows every tool call \u2014 any Bash command, any file read/write, inside or outside the project (including .claude/ guardrails, .mae/ and approve). Claude Code's own permission prompts and settings.json deny rules still apply.",
+      "_comment": "Human-supervised maintenance session (claude --agent project-maintainer). full_access: the guard hook allows every tool call \u2014 any Bash command, any file read/write, inside or outside the project (including .claude/ guardrails, .mae/ and approve). This hook is the only per-role limit: settings.json has no deny rules because they would bind this role too. Claude Code's permission prompts still apply.",
       "full_access": true,
       "write": [
         "**"

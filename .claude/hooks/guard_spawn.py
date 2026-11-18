@@ -20,6 +20,10 @@ def deny(msg: str) -> None:
 def main() -> None:
     data = json.load(sys.stdin)
     root = os.environ.get("CLAUDE_PROJECT_DIR") or data.get("cwd") or os.getcwd()
+    policy = json.load(open(os.path.join(root, ".claude", "mae-policy.json")))
+    role = data.get("agent_type") or os.environ.get("MAE_ROLE") or policy["default_role"]
+    if policy["roles"].get(role, {}).get("full_access"):
+        sys.exit(0)
     inp = data.get("tool_input", {}) or {}
     prompt = inp.get("prompt", "") or ""
     target = inp.get("subagent_type", "")
@@ -45,4 +49,7 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except Exception as exc:  # fail closed, not open
+        deny(f"guard_spawn failed, blocking the call: {exc}")

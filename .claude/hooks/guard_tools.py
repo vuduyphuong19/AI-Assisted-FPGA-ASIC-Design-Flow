@@ -14,6 +14,7 @@ import sys
 
 PATH_TOOLS_WRITE = {"Write", "Edit", "MultiEdit", "NotebookEdit"}
 PATH_TOOLS_READ = {"Read", "Grep", "Glob"}
+SEARCH_TOOLS = {"Grep", "Glob"}
 
 
 def deny(msg: str) -> None:
@@ -23,6 +24,24 @@ def deny(msg: str) -> None:
 
 def match(rel: str, globs) -> bool:
     return any(fnmatch.fnmatch(rel, g) or rel == g.rstrip("/*") for g in globs)
+
+
+def literal_prefix(pattern: str) -> str:
+    """The leading path segments of a glob that contain no wildcard."""
+    parts = []
+    for part in pattern.split("/"):
+        if any(c in part for c in "*?[{"):
+            break
+        parts.append(part)
+    return "/".join(parts) or "."
+
+
+def reaches(rel: str, globs) -> bool:
+    """True if a recursive search rooted at rel could enter a directory named by globs."""
+    if rel == ".":
+        return bool(globs)
+    bases = [g.split("*")[0].rstrip("/") for g in globs]
+    return any(rel == b or rel.startswith(b + "/") or b.startswith(rel + "/") for b in bases)
 
 
 def main() -> None:
@@ -40,6 +59,13 @@ def main() -> None:
 
     if tool in PATH_TOOLS_WRITE | PATH_TOOLS_READ:
         raw = inp.get("file_path") or inp.get("notebook_path") or inp.get("path") or ""
+        if tool in SEARCH_TOOLS:
+            scope = os.path.join(data.get("cwd") or root, raw)
+            if tool == "Glob":
+                scope = os.path.join(scope, literal_prefix(inp.get("pattern") or ""))
+            scope_rel = os.path.relpath(os.path.realpath(scope), os.path.realpath(root))
+            if not scope_rel.startswith("..") and reaches(scope_rel, g["no_access"]):
+                deny(f"[{role}] this search could enter orchestrator state; search a specific directory such as rtl/.")
         if not raw:
             if tool == "Grep" and rp.get("read_deny"):
                 deny(f"[{role}] Grep without an explicit path would search files you may not read; pass `path`.")
@@ -71,4 +97,7 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except Exception as exc:  # this hook is the only enforcement layer: fail closed, not open
+        deny(f"guard_tools failed, blocking the call: {exc}")
