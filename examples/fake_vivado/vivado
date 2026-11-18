@@ -1,0 +1,152 @@
+#!/usr/bin/env python3
+"""FAKE vivado for replay/tests only. It does not synthesize anything.
+
+It writes canned reports in Vivado's text format so the runner, parser, evidence ledger
+and gates can be exercised end-to-end on machines without Vivado. The version string says
+FAKE, and that string is recorded in every evidence record it produces.
+Env FAKE_VIVADO_WNS (default 0.412) sets the reported setup slack;
+FAKE_VIVADO_LATCH=1 adds an inferred-latch warning to the transcript;
+FAKE_VIVADO_NOCLOCK=<n> reports n register pins with no clock in check_timing;
+FAKE_VIVADO_CDC=critical|noasync writes a report_cdc summary with CDC-1 or CDC-2;
+FAKE_VIVADO_XDC_CRIT=1 adds a failed-XDC-command CRITICAL WARNING (Common 17-69).
+"""
+import os
+import sys
+from pathlib import Path
+
+if "-version" in sys.argv:
+    print("Vivado v0000.0 FAKE (replay stub, not a real tool)")
+    sys.exit(0)
+tcl = Path(sys.argv[sys.argv.index("-source") + 1]).read_text()
+top = tcl.split("-top ")[1].split()[0]
+impl = "route_design" in tcl
+wns = float(os.environ.get("FAKE_VIVADO_WNS", "0.412"))
+period = 5.0
+UTIL = """1. Slice Logic
+--------------
+
++-------------------------+------+-------+------------+-----------+-------+
+|        Site Type        | Used | Fixed | Prohibited | Available | Util% |
++-------------------------+------+-------+------------+-----------+-------+
+| Slice LUTs*             |   21 |     0 |          0 |     20800 |  0.10 |
+| Slice Registers         |   11 |     0 |          0 |     41600 |  0.03 |
++-------------------------+------+-------+------------+-----------+-------+
+
+2. Memory
+---------
+
++----------------+------+-------+------------+-----------+-------+
+|    Site Type   | Used | Fixed | Prohibited | Available | Util% |
++----------------+------+-------+------------+-----------+-------+
+| Block RAM Tile |    0 |     0 |          0 |        50 |  0.00 |
++----------------+------+-------+------------+-----------+-------+
+
+3. DSP
+------
+
++-----------+------+-------+------------+-----------+-------+
+| Site Type | Used | Fixed | Prohibited | Available | Util% |
++-----------+------+-------+------------+-----------+-------+
+| DSPs      |    0 |     0 |          0 |        90 |  0.00 |
++-----------+------+-------+------------+-----------+-------+
+"""
+NOCLK = int(os.environ.get("FAKE_VIVADO_NOCLOCK", "0"))
+CHECK = f"""check_timing report
+
+Table of Contents
+-----------------
+1. checking no_clock ({NOCLK})
+2. checking constant_clock (0)
+3. checking pulse_width_clock (0)
+4. checking unconstrained_internal_endpoints (0)
+5. checking no_input_delay (12)
+6. checking no_output_delay (11)
+7. checking multiple_clock (0)
+8. checking generated_clocks (0)
+9. checking loops (0)
+10. checking partial_input_delay (0)
+11. checking partial_output_delay (0)
+12. checking latch_loops (0)
+
+1. checking no_clock ({NOCLK})
+------------------------
+ There are {NOCLK} register/latch pins with no clock.
+
+"""
+
+
+def timing(w):
+    met = "All user specified timing constraints are met." if w >= 0 else "Timing constraints are not met."
+    return CHECK + f"""------------------------------------------------------------------------------------------------
+| Clock Summary
+| -------------
+------------------------------------------------------------------------------------------------
+
+Clock  Waveform(ns)       Period(ns)      Frequency(MHz)
+-----  ------------       ----------      --------------
+clk    {{0.000 2.500}}      {period:.3f}           {1000/period:.3f}
+
+
+------------------------------------------------------------------------------------------------
+| Design Timing Summary
+| ---------------------
+------------------------------------------------------------------------------------------------
+
+    WNS(ns)      TNS(ns)  TNS Failing Endpoints  TNS Total Endpoints      WHS(ns)      THS(ns)  THS Failing Endpoints  THS Total Endpoints
+    -------      -------  ---------------------  -------------------      -------      -------  ---------------------  -------------------
+{w:11.3f}  {min(w, 0) * 3:11.3f}  {0 if w >= 0 else 3:21d}  {40:19d}  {0.081:11.3f}  {0.0:11.3f}  {0:21d}  {40:19d}
+
+
+{met}
+"""
+LEVELS = """+-----------------+-------------+----+----+---+
+| End Point Clock | Requirement |  1 |  2 | 3 |
++-----------------+-------------+----+----+---+
+| clk             | 5.000ns     | 14 | 20 | 6 |
++-----------------+-------------+----+----+---+
+"""
+POWER = """+--------------------------+--------------+
+| Total On-Chip Power (W)  | 0.072        |
+| Dynamic (W)              | 0.002        |
+| Device Static (W)        | 0.070        |
+| Confidence Level         | Low          |
++--------------------------+--------------+
+"""
+METH = """+-----------+----------+-------------------------------+------------+
+| Rule      | Severity | Description                   | Violations |
++-----------+----------+-------------------------------+------------+
+| TIMING-18 | Warning  | Missing input or output delay | 12         |
++-----------+----------+-------------------------------+------------+
+"""
+w = Path(".")
+cdc = os.environ.get("FAKE_VIVADO_CDC")
+if cdc:
+    rule = ("CDC-1", "Critical", "1-bit unknown CDC circuitry") if cdc == "critical" else \
+           ("CDC-2", "Warning", "1-bit synchronized, missing ASYNC_REG property")
+    (w / "cdc.rpt").write_text(
+        "+----------+-------+-------+-----------------------------------+\n"
+        "| Severity | ID    | Count | Description                       |\n"
+        "+----------+-------+-------+-----------------------------------+\n"
+        f"| {rule[1]:<8} | {rule[0]} | 1     | {rule[2]:<33} |\n"
+        "| Info     | CDC-3 | 4     | 1-bit synchronized with ASYNC_REG |\n"
+        "+----------+-------+-------+-----------------------------------+\n")
+(w / "utilization.rpt").write_text(UTIL)
+(w / "timing_summary.rpt").write_text(timing(wns + 0.3))
+(w / "logic_levels.rpt").write_text(LEVELS)
+(w / "power.rpt").write_text(POWER)
+(w / "methodology.rpt").write_text(METH)
+if impl:
+    (w / "impl_utilization.rpt").write_text(UTIL)
+    (w / "impl_timing_summary.rpt").write_text(timing(wns))
+    (w / "impl_logic_levels.rpt").write_text(LEVELS)
+    (w / "impl_power.rpt").write_text(POWER)
+    (w / "impl_route_status.rpt").write_text(
+        "Design Route Status\n   # of logical nets.......................... :          80 :\n"
+        "   # of nets with routing errors.............. :           0 :\n")
+print(f"INFO: [Synth 8-6157] synthesizing module '{top}' (FAKE)")
+if os.environ.get("FAKE_VIVADO_XDC_CRIT") == "1":
+    print("CRITICAL WARNING: [Common 17-69] Command failed: 'BUFGCTRL_X0Y0' is not a valid site or package pin name. "
+          f"[{top}.xdc:2]")
+if os.environ.get("FAKE_VIVADO_LATCH") == "1":
+    print("WARNING: [Synth 8-327] inferring latch for variable 'q_reg' [rtl.v:12]")
+print(f"VIVADO_FLOW_DONE top={top} impl={int(impl)}")

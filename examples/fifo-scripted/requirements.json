@@ -1,0 +1,26 @@
+{
+  "block": "sync_fifo",
+  "baseline": "SPEC-FIFO-1.0",
+  "parameters": {"WIDTH": 8, "DEPTH": 4, "AW": 2},
+  "ports": [
+    {"name": "clk", "dir": "in", "width": 1},
+    {"name": "rst_n", "dir": "in", "width": 1, "note": "active-low, synchronous"},
+    {"name": "wr_en", "dir": "in", "width": 1},
+    {"name": "wr_data", "dir": "in", "width": "WIDTH"},
+    {"name": "rd_en", "dir": "in", "width": 1},
+    {"name": "rd_data", "dir": "out", "width": "WIDTH"},
+    {"name": "full", "dir": "out", "width": 1},
+    {"name": "empty", "dir": "out", "width": 1},
+    {"name": "count", "dir": "out", "width": "AW+1"}
+  ],
+  "requirements": [
+    {"id": "REQ-1", "text": "After a synchronous reset (rst_n low at a rising clk edge), empty=1, full=0 and count=0."},
+    {"id": "REQ-2", "text": "Data is read in the order it was written. Whenever empty=0, rd_data shows the oldest stored word (first-word fall-through); rd_en=1 at a rising edge removes it."},
+    {"id": "REQ-3", "text": "A write while full=1 is ignored: stored data and count are unchanged by the write, even if rd_en=1 in the same cycle."},
+    {"id": "REQ-4", "text": "A read while empty=1 is ignored: count stays 0 and no underflow occurs."},
+    {"id": "REQ-5", "text": "count equals the number of stored words; full=1 exactly when count=DEPTH; empty=1 exactly when count=0."},
+    {"id": "REQ-6", "text": "A simultaneous read and write when the FIFO is neither empty nor full leaves count unchanged and preserves order."}
+  ],
+  "coverage_bins": ["full_reached", "write_when_full", "read_when_empty", "simultaneous_rw"],
+  "ppa_targets": {"fmax_mhz": 200, "note": "timing target requires a liberty file and SDC; not checkable without STA"}
+}

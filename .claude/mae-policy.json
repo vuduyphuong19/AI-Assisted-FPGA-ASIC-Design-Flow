@@ -1,0 +1,127 @@
+{
+  "_comment": "Per-role access policy enforced by .claude/hooks/guard_tools.py. Role = the hook input's agent_type (subagent or --agent main-thread agent), else env MAE_ROLE, else default_role.",
+  "default_role": "ic-orchestrator",
+  "global": {
+    "no_access": [
+      ".mae/**"
+    ],
+    "no_write": [
+      ".claude/**",
+      "tools/**",
+      "mae/**",
+      "spec/**",
+      ".git/**"
+    ],
+    "bash_deny": [
+      "\\.mae\\b",
+      "runner\\.key",
+      "mae\\.py\\s+approve",
+      "git\\s+push",
+      "\\brm\\s+-r",
+      "\\bcurl\\b",
+      "\\bwget\\b",
+      "\\bsudo\\b"
+    ]
+  },
+  "worker_bash_allow": [
+    "^python3 tools/mae\\.py run (style|lint|sim|formal|synth|impl|sta)$",
+    "^python3 tools/mae\\.py evidence( EV-[0-9a-f]+)?( --log)?$",
+    "^python3 tools/mae\\.py (status|validate-report [\\w-]+)$",
+    "^ls( -[a-z]+)?( [\\w./-]+)*$"
+  ],
+  "roles": {
+    "ic-orchestrator": {
+      "write": [],
+      "read_deny": [],
+      "bash_allow": [
+        "^python3 tools/mae\\.py (next|status|audit|report)$",
+        "^python3 tools/mae\\.py (brief|run|submit|validate-report) [\\w-]+$",
+        "^python3 tools/mae\\.py gate (rtl_freeze|synth_clean|timing)$",
+        "^python3 tools/mae\\.py revert \\d+$",
+        "^python3 tools/mae\\.py evidence( EV-[0-9a-f]+)?( --log)?$",
+        "^git (status|log|diff)( [\\w./-]+)*$"
+      ]
+    },
+    "spec-analyst": {
+      "write": [
+        "reports/spec-*.json",
+        "spec-drafts/**"
+      ],
+      "read_deny": [
+        "rtl/**",
+        "dv/**",
+        "formal/**"
+      ]
+    },
+    "rtl-designer": {
+      "write": [
+        "rtl/**",
+        "reports/rtl.json",
+        "reports/fix-*.json"
+      ],
+      "read_deny": [
+        "dv/**",
+        "formal/**",
+        "reports/tb.json",
+        "reports/props.json",
+        "reports/triage-*.json"
+      ]
+    },
+    "dv-engineer": {
+      "write": [
+        "dv/**",
+        "reports/tb.json",
+        "reports/fix-*.json"
+      ],
+      "read_deny": [
+        "rtl/**",
+        "formal/**",
+        "reports/rtl.json",
+        "reports/props.json",
+        "reports/triage-*.json"
+      ]
+    },
+    "formal-engineer": {
+      "write": [
+        "formal/**",
+        "reports/props.json",
+        "reports/fix-*.json"
+      ],
+      "read_deny": [
+        "rtl/**",
+        "dv/**",
+        "reports/rtl.json",
+        "reports/tb.json",
+        "reports/triage-*.json"
+      ]
+    },
+    "impl-engineer": {
+      "write": [
+        "impl/**",
+        "reports/constraints.json",
+        "reports/impl-*.json"
+      ],
+      "read_deny": []
+    },
+    "debug-triage": {
+      "write": [
+        "reports/triage-*.json"
+      ],
+      "read_deny": []
+    },
+    "design-reviewer": {
+      "write": [
+        "reports/review.json"
+      ],
+      "read_deny": []
+    },
+    "project-maintainer": {
+      "_comment": "Human-supervised maintenance session (claude --agent project-maintainer). full_access: the guard hook allows every tool call \u2014 any Bash command, any file read/write, inside or outside the project (including .claude/ guardrails, .mae/ and approve). Claude Code's own permission prompts and settings.json deny rules still apply.",
+      "full_access": true,
+      "write": [
+        "**"
+      ],
+      "read_deny": []
+    }
+  }
+}

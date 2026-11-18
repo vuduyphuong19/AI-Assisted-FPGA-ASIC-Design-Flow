@@ -1,0 +1,58 @@
+{
+  "block": "uart_apb",
+  "baseline": "SPEC-UART-APB-1.0",
+  "parameters": {"FIFO_DEPTH": 4, "ADDR_W": 5, "DIV_RESET": 868, "DIV_MIN": 4},
+  "ports": [
+    {"name": "clk", "dir": "in", "width": 1, "note": "clock (APB PCLK); single clock domain for all logic"},
+    {"name": "rst_n", "dir": "in", "width": 1, "note": "active-low, synchronous (APB PRESETn sampled at the rising clk edge)"},
+    {"name": "psel", "dir": "in", "width": 1, "note": "level, APB select; clk domain"},
+    {"name": "penable", "dir": "in", "width": 1, "note": "level, APB access phase; clk domain"},
+    {"name": "pwrite", "dir": "in", "width": 1, "note": "level, 1 = write; stable from setup through access phase"},
+    {"name": "paddr", "dir": "in", "width": "ADDR_W", "note": "data, byte address, valid while psel=1; paddr[1:0] are ignored"},
+    {"name": "pwdata", "dir": "in", "width": 32, "note": "data, valid while psel=1 and pwrite=1"},
+    {"name": "prdata", "dir": "out", "width": 32, "note": "data, valid in the read access cycle (psel=1, penable=1, pwrite=0); 0 in every other cycle; reset 0"},
+    {"name": "pready", "dir": "out", "width": 1, "note": "level, constant 1 (no wait states)"},
+    {"name": "pslverr", "dir": "out", "width": 1, "note": "level, meaningful only in the access cycle; 0 in every other cycle; reset 0"},
+    {"name": "rxd", "dir": "in", "width": 1, "note": "UART serial input, ASYNCHRONOUS to clk, idle 1; must be synchronized (2 flops, ASYNC_REG) before use"},
+    {"name": "txd", "dir": "out", "width": 1, "note": "UART serial output, idle 1, reset 1; driven directly by a flop (glitch-free)"},
+    {"name": "irq", "dir": "out", "width": 1, "note": "level interrupt, active high, reset 0"}
+  ],
+  "requirements": [
+    {"id": "REQ-1", "text": "Reset: in the cycle after a rising clk edge with rst_n=0: txd=1, irq=0, pslverr=0, prdata=0, both FIFOs are empty, CTRL=0x00, BAUD=DIV_RESET (868) and STATUS=0x0000000A (TX_EMPTY=1, RX_EMPTY=1, all other bits 0). A frame in progress on txd or rxd is abandoned."},
+    {"id": "REQ-2", "text": "APB protocol (AMBA APB3, no wait states): pready=1 in every cycle. A transfer is a setup cycle (psel=1, penable=0) followed by one access cycle (psel=1, penable=1). A write takes effect at the rising clk edge that ends the access cycle. Read data is driven on prdata during the read access cycle; prdata=0 in every other cycle. pslverr is 0 in every cycle that is not an access cycle. Bus inputs that do not follow this protocol (penable=1 without a preceding setup cycle, paddr/pwrite/pwdata changing between setup and access) are undefined: no test or property may rely on them."},
+    {"id": "REQ-3", "text": "Register map (byte offsets on paddr, paddr[1:0] ignored): 0x00 TXDATA (write-only), 0x04 RXDATA (read-only), 0x08 STATUS (read, write-1-to-clear bits [7:5]), 0x0C CTRL (read/write, bits [6:0]), 0x10 BAUD (read/write, bits [15:0]). Reading CTRL or BAUD returns the stored value with all other bits 0. Reading TXDATA returns 0 with pslverr=0. Writing RXDATA has no effect, pslverr=0."},
+    {"id": "REQ-4", "text": "Unmapped address: an access cycle with paddr in 0x14..0x1F gives pslverr=1; a read returns prdata=0; a write changes no register, FIFO or output."},
+    {"id": "REQ-5", "text": "CTRL bits: [0] TX_EN, [1] RX_EN, [2] PARITY_EN, [3] PARITY_ODD (0 = even, 1 = odd), [4] IE_RXNE, [5] IE_TXE, [6] IE_ERR. STATUS bits: [0] TX_FULL, [1] TX_EMPTY, [2] RX_FULL, [3] RX_EMPTY, [4] TX_BUSY, [5] RX_OVERRUN, [6] FRAME_ERR, [7] PARITY_ERR, [31:8] read 0. Writes to STATUS bits [4:0] have no effect."},
+    {"id": "REQ-6", "text": "TX push: an APB write to TXDATA when STATUS.TX_FULL=0 (value before the ending edge) appends pwdata[7:0] to the TX FIFO, pslverr=0. When TX_FULL=1 the byte is discarded, the TX FIFO is unchanged and pslverr=1, even if the transmitter removes a byte in the same cycle. The TX FIFO holds FIFO_DEPTH bytes (FIFO_DEPTH is a power of two, >= 2)."},
+    {"id": "REQ-7", "text": "FIFO flags: STATUS.TX_FULL=1 exactly when the TX FIFO holds FIFO_DEPTH bytes, TX_EMPTY=1 exactly when it holds 0 bytes; RX_FULL and RX_EMPTY likewise for the RX FIFO. A flag read in an access cycle reflects every push and pop completed at earlier clk edges."},
+    {"id": "REQ-8", "text": "TX frame format: each byte leaves the TX FIFO in write order and is sent on txd as one frame: start bit (0), 8 data bits least significant first, then a parity bit when PARITY_EN=1 (even parity: data bits plus parity bit contain an even number of 1s; odd parity: an odd number), then one stop bit (1). PARITY_EN and PARITY_ODD are sampled at the first cycle of the start bit and apply to the whole frame."},
+    {"id": "REQ-9", "text": "TX bit timing: every bit of a frame (start, data, parity, stop) holds txd constant for exactly D clk cycles, where D is the BAUD value at the first cycle of that frame's start bit. A BAUD write during a frame does not change that frame."},
+    {"id": "REQ-10", "text": "TX start: when TX_EN=1, the TX FIFO is not empty and no frame is in progress, the next start bit begins at most 3 clk cycles after the latest of: the rising edge that ended the TXDATA write, the edge that set TX_EN, or the last cycle of the previous stop bit. Between frames txd=1."},
+    {"id": "REQ-11", "text": "TX disable: while TX_EN=0 no new frame starts and txd=1 when no frame is in progress. Clearing TX_EN during a frame lets that frame complete normally. TX FIFO contents are kept and are sent once TX_EN=1 again."},
+    {"id": "REQ-12", "text": "TX_BUSY: STATUS.TX_BUSY=1 in every cycle in which txd carries a frame (first cycle of the start bit through the last cycle of the stop bit). It may also be 1 for at most 3 cycles before a start bit and 1 cycle after a stop bit; in all other cycles it is 0."},
+    {"id": "REQ-13", "text": "RX reception: with RX_EN=1 and no frame being received, a 1-to-0 transition on rxd starts a frame. A frame on rxd whose bits each last D clk cycles (D = BAUD, D >= DIV_MIN), with the same format as REQ-8 (PARITY_EN/PARITY_ODD sampled at the start bit), at any phase relative to clk, is received with the data bits it carried. For D >= 16 this also holds when every bit of the frame lasts any whole number of cycles within D*0.98 to D*1.02. Frames that follow each other with no idle time between stop bit and next start bit are all received."},
+    {"id": "REQ-14", "text": "RX false start: for D >= 16, a low pulse on rxd lasting at most D/4 clk cycles while the receiver is idle stores no byte, sets no STATUS error bit, and a frame starting after rxd has been 1 again for at least D cycles is received normally."},
+    {"id": "REQ-15", "text": "RX store: a received frame whose stop bit is 1 and, when PARITY_EN=1, whose parity is correct appends its byte to the RX FIFO when RX_FULL=0. RX_EMPTY becomes 0 (or the byte becomes readable behind older bytes) no later than 6 clk cycles after the nominal last cycle of the stop bit, measured from the 1-to-0 transition that started the frame."},
+    {"id": "REQ-16", "text": "RX read: an APB read of RXDATA when STATUS.RX_EMPTY=0 returns the oldest byte in prdata[7:0] with prdata[31:8]=0 and pslverr=0, and removes that byte at the edge ending the access cycle. When RX_EMPTY=1 the read returns prdata=0, pslverr=1, and nothing changes."},
+    {"id": "REQ-17", "text": "RX overrun: when a valid frame (REQ-15) completes while RX_FULL=1 (value before that edge, even if an RXDATA read removes a byte in the same cycle), its byte is discarded, the RX FIFO is unchanged and STATUS.RX_OVERRUN becomes 1 and stays 1 until cleared (REQ-20)."},
+    {"id": "REQ-18", "text": "RX framing error: when the stop bit of a received frame is 0, no byte is stored and STATUS.FRAME_ERR becomes 1 and stays 1 until cleared. The receiver does not detect a new start bit until rxd has been 1 for at least one clk cycle."},
+    {"id": "REQ-19", "text": "RX parity error: when PARITY_EN=1 (sampled at the start bit) and the received parity bit does not match the configured parity, no byte is stored and STATUS.PARITY_ERR becomes 1 and stays 1 until cleared. A frame with both a parity and a framing error sets both bits."},
+    {"id": "REQ-20", "text": "Error clear: an APB write to STATUS with pwdata[k]=1 clears STATUS bit k for k = 5, 6, 7; bits written with 0 are unchanged. If an error event for bit k occurs at the same edge as its clear, bit k is 1 afterwards (the event wins)."},
+    {"id": "REQ-21", "text": "RX disable: while RX_EN=0 no frame is received. Clearing RX_EN during a frame abandons it: no byte stored, no error bit set. RX FIFO contents are kept and remain readable."},
+    {"id": "REQ-22", "text": "BAUD write: a write to BAUD with pwdata[15:0] >= DIV_MIN (4) stores pwdata[15:0], pslverr=0. A write with pwdata[15:0] < DIV_MIN leaves BAUD unchanged and gives pslverr=1. A new value applies to transmit and receive frames starting after the write (REQ-9); frames in progress keep the value they started with."},
+    {"id": "REQ-23", "text": "Interrupt: irq = (IE_RXNE and RX_EMPTY=0) or (IE_TXE and TX_EMPTY=1) or (IE_ERR and (RX_OVERRUN or FRAME_ERR or PARITY_ERR)), using CTRL and STATUS values; irq may lag a change of those values by at most 1 clk cycle and has no other delay."}
+  ],
+  "coverage_bins": [
+    "tx_fifo_full", "tx_write_when_full", "tx_back_to_back", "tx_disable_mid_frame",
+    "rx_fifo_full", "rx_read_when_empty", "rx_back_to_back", "rx_overrun", "rx_overrun_with_read",
+    "rx_frame_error", "rx_parity_error", "rx_false_start", "rx_baud_mismatch", "rx_disable_mid_frame",
+    "parity_even_frame", "parity_odd_frame", "baud_change_between_frames", "baud_below_min",
+    "invalid_address", "status_w1c_clear", "error_set_and_clear_same_edge",
+    "irq_rxne", "irq_txe", "irq_err", "reset_mid_frame"
+  ],
+  "ppa_targets": {
+    "fmax_mhz": 100,
+    "part": "xczu7ev-ffvc1156-2-e",
+    "note": "Target board ZCU104 (Zynq UltraScale+ XCZU7EV). clk is 100 MHz (on the board, generated by an MMCM from the 125 MHz PL user clock). DIV_RESET=868 gives 115200 baud at 100 MHz (bit period 8.68 us, -0.01 %). Area expectation (estimate, unverified): under 300 LUTs and 200 FFs."
+  }
+}

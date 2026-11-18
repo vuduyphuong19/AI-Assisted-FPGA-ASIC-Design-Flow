@@ -1,0 +1,77 @@
+{
+  "agent": "ic-orchestrator",
+  "env": {
+    "CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH": "1",
+    "CLAUDE_CODE_MAX_CONCURRENT_SUBAGENTS": "4"
+  },
+  "permissions": {
+    "allow": [
+      "Bash(python3 tools/mae.py next)",
+      "Bash(python3 tools/mae.py status)",
+      "Bash(python3 tools/mae.py brief *)",
+      "Bash(python3 tools/mae.py run *)",
+      "Bash(python3 tools/mae.py submit *)",
+      "Bash(python3 tools/mae.py gate *)",
+      "Bash(python3 tools/mae.py evidence *)",
+      "Bash(python3 tools/mae.py validate-report *)",
+      "Bash(python3 tools/mae.py revert *)",
+      "Bash(python3 tools/mae.py report)",
+      "Bash(python3 tools/mae.py audit)"
+    ],
+    "deny": [
+      "Bash(python3 tools/mae.py approve *)",
+      "Bash(git push *)",
+      "Read(./.mae/**)",
+      "Edit(./.mae/**)",
+      "Write(./.mae/**)",
+      "Edit(./.claude/hooks/**)",
+      "Write(./.claude/hooks/**)",
+      "Edit(./.claude/settings.json)",
+      "Write(./.claude/settings.json)",
+      "Edit(./.claude/mae-policy.json)",
+      "Write(./.claude/mae-policy.json)"
+    ]
+  },
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Write|Edit|MultiEdit|NotebookEdit|Read|Grep|Glob|Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 ${CLAUDE_PROJECT_DIR}/.claude/hooks/guard_tools.py"
+          }
+        ]
+      },
+      {
+        "matcher": "Agent|Task",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 ${CLAUDE_PROJECT_DIR}/.claude/hooks/guard_spawn.py"
+          }
+        ]
+      }
+    ],
+    "SubagentStop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 ${CLAUDE_PROJECT_DIR}/.claude/hooks/check_report.py"
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 ${CLAUDE_PROJECT_DIR}/.claude/hooks/orchestrator_stop.py"
+          }
+        ]
+      }
+    ]
+  }
+}

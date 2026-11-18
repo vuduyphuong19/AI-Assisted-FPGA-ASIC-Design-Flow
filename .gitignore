@@ -1,0 +1,15 @@
+.mae/
+__pycache__/
+*.pyc
+reports/*.json
+reports/signoff_report.md
+impl/board/*/build/
+impl/board/*/sim/dryrun/*.vvp
+# Vivado / Vitis scratch files
+.Xil/
+*.jou
+vivado*.log
+vivado_pid*.str
+xsct*.log
+# personal Claude Code settings
+.claude/settings.local.json
